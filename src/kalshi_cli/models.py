@@ -144,28 +144,52 @@ class Position(BaseModel):
     """A position in a market."""
 
     ticker: str
-    position: int  # positive = YES, negative = NO
-    market_exposure: int = 0  # cents
-    realized_pnl: int = 0  # cents
+    # New API fields (string fixed-point dollars/contracts)
+    position_fp: Optional[str] = None
+    market_exposure_dollars_str: Optional[str] = Field(None, alias="market_exposure_dollars")
+    realized_pnl_dollars_str: Optional[str] = Field(None, alias="realized_pnl_dollars")
+    total_traded_dollars_str: Optional[str] = Field(None, alias="total_traded_dollars")
+    fees_paid_dollars_str: Optional[str] = Field(None, alias="fees_paid_dollars")
+    last_updated_ts: Optional[str] = None
+    # Legacy API fields (integer cents) — kept for backward compatibility
+    position: Optional[int] = None
+    market_exposure: int = 0
+    realized_pnl: int = 0
     resting_orders_count: int = 0
     total_traded: int = 0
 
-    model_config = {"extra": "allow"}
+    model_config = {"extra": "allow", "populate_by_name": True}
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.position is None and self.position_fp is not None:
+            self.position = int(float(self.position_fp))
+        elif self.position is None:
+            self.position = 0
+        if self.market_exposure == 0 and self.market_exposure_dollars_str is not None:
+            self.market_exposure = int(float(self.market_exposure_dollars_str) * 100)
+        if self.realized_pnl == 0 and self.realized_pnl_dollars_str is not None:
+            self.realized_pnl = int(float(self.realized_pnl_dollars_str) * 100)
+        if self.total_traded == 0 and self.total_traded_dollars_str is not None:
+            self.total_traded = int(float(self.total_traded_dollars_str) * 100)
 
     @property
     def side(self) -> Literal["yes", "no"]:
-        return "yes" if self.position > 0 else "no"
+        return "yes" if (self.position or 0) > 0 else "no"
 
     @property
     def quantity(self) -> int:
-        return abs(self.position)
+        return abs(self.position or 0)
 
     @property
     def exposure_dollars(self) -> float:
+        if self.market_exposure_dollars_str is not None:
+            return float(self.market_exposure_dollars_str)
         return self.market_exposure / 100
 
     @property
     def realized_pnl_dollars(self) -> float:
+        if self.realized_pnl_dollars_str is not None:
+            return float(self.realized_pnl_dollars_str)
         return self.realized_pnl / 100
 
 
